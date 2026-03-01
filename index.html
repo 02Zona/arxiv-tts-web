@@ -1,0 +1,299 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>arXiv TTS Web Player</title>
+  <style>
+    :root {
+      color-scheme: light dark;
+      --bg: #ffffff;
+      --fg: #1f2937;
+      --muted: #6b7280;
+      --card: #f9fafb;
+      --border: #e5e7eb;
+      --primary: #2563eb;
+      --primary-hover: #1d4ed8;
+      --danger: #dc2626;
+      --danger-hover: #b91c1c;
+    }
+
+    @media (prefers-color-scheme: dark) {
+      :root {
+        --bg: #111827;
+        --fg: #f3f4f6;
+        --muted: #9ca3af;
+        --card: #1f2937;
+        --border: #374151;
+      }
+    }
+
+    * {
+      box-sizing: border-box;
+    }
+
+    body {
+      margin: 0;
+      background: var(--bg);
+      color: var(--fg);
+      font-family: system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+      line-height: 1.5;
+    }
+
+    main {
+      max-width: 980px;
+      margin: 0 auto;
+      padding: 24px 16px 40px;
+    }
+
+    h1 {
+      margin-top: 0;
+      margin-bottom: 8px;
+      font-size: 1.8rem;
+    }
+
+    .desc {
+      margin-top: 0;
+      color: var(--muted);
+    }
+
+    .status-bar {
+      display: flex;
+      flex-wrap: wrap;
+      gap: 10px;
+      align-items: center;
+      padding: 12px;
+      border: 1px solid var(--border);
+      background: var(--card);
+      border-radius: 12px;
+      margin-bottom: 20px;
+      color: var(--muted);
+    }
+
+    .pill {
+      background: rgba(37, 99, 235, 0.12);
+      color: var(--primary);
+      border-radius: 999px;
+      padding: 3px 10px;
+      font-size: 0.9rem;
+      font-weight: 600;
+    }
+
+    .episode {
+      background: var(--card);
+      border: 1px solid var(--border);
+      border-radius: 12px;
+      padding: 14px;
+      margin-bottom: 14px;
+    }
+
+    .episode h2 {
+      font-size: 1.05rem;
+      margin: 0 0 8px;
+    }
+
+    .meta {
+      color: var(--muted);
+      font-size: 0.9rem;
+      margin-bottom: 12px;
+      display: flex;
+      gap: 8px;
+      flex-wrap: wrap;
+    }
+
+    .actions {
+      display: flex;
+      flex-wrap: wrap;
+      gap: 8px;
+      align-items: center;
+    }
+
+    button,
+    a.btn {
+      border: none;
+      border-radius: 8px;
+      padding: 8px 12px;
+      cursor: pointer;
+      font-size: 0.92rem;
+      text-decoration: none;
+      display: inline-flex;
+      align-items: center;
+      gap: 6px;
+    }
+
+    button.primary {
+      background: var(--primary);
+      color: #fff;
+    }
+
+    button.primary:hover {
+      background: var(--primary-hover);
+    }
+
+    button.danger {
+      background: var(--danger);
+      color: #fff;
+    }
+
+    button.danger:hover {
+      background: var(--danger-hover);
+    }
+
+    a.btn {
+      background: transparent;
+      border: 1px solid var(--border);
+      color: var(--fg);
+    }
+
+    .empty,
+    .error {
+      color: var(--muted);
+      padding: 16px;
+      border: 1px dashed var(--border);
+      border-radius: 12px;
+      background: var(--card);
+    }
+  </style>
+</head>
+<body>
+  <main>
+    <h1>arXiv TTS Web Player</h1>
+    <p class="desc">直接读取 <code>feed.xml</code>，点击后使用浏览器本地语音朗读 <code>itunes:summary</code>。</p>
+
+    <div class="status-bar">
+      <span class="pill" id="voice-pill">语音加载中…</span>
+      <span id="feed-status">正在加载 feed…</span>
+    </div>
+
+    <section id="episodes"></section>
+  </main>
+
+  <script>
+    const state = {
+      selectedVoice: null,
+      voices: []
+    };
+
+    function updateVoiceStatus(message) {
+      const pill = document.getElementById('voice-pill');
+      pill.textContent = message;
+    }
+
+    function pickVoice() {
+      state.voices = speechSynthesis.getVoices() || [];
+
+      const zoeVoice = state.voices.find((voice) => /zoe/i.test(voice.name));
+      const englishVoice = state.voices.find((voice) => /^en(-|_|$)/i.test(voice.lang));
+      state.selectedVoice = zoeVoice || englishVoice || state.voices[0] || null;
+
+      if (!state.selectedVoice) {
+        updateVoiceStatus('未找到可用语音');
+        return;
+      }
+
+      updateVoiceStatus(`当前语音: ${state.selectedVoice.name} (${state.selectedVoice.lang})`);
+    }
+
+    speechSynthesis.onvoiceschanged = pickVoice;
+    pickVoice();
+
+    function speak(text) {
+      if (!text || !text.trim()) {
+        alert('该条目没有可朗读摘要（itunes:summary 为空）。');
+        return;
+      }
+
+      if (!state.selectedVoice) {
+        pickVoice();
+      }
+
+      const utterance = new SpeechSynthesisUtterance(text);
+      if (state.selectedVoice) {
+        utterance.voice = state.selectedVoice;
+      }
+      utterance.rate = 1.0;
+      utterance.pitch = 1.0;
+
+      speechSynthesis.cancel();
+      speechSynthesis.speak(utterance);
+    }
+
+    function stopSpeaking() {
+      speechSynthesis.cancel();
+    }
+
+    function getText(item, selector) {
+      return item.querySelector(selector)?.textContent?.trim() || '';
+    }
+
+    function renderItems(items) {
+      const container = document.getElementById('episodes');
+      container.innerHTML = '';
+
+      if (!items.length) {
+        container.innerHTML = '<div class="empty">feed 中没有 item 条目。</div>';
+        return;
+      }
+
+      items.forEach((item) => {
+        const title = getText(item, 'title') || 'Untitled';
+        const summary = getText(item, 'itunes\\:summary') || getText(item, 'description');
+        const pubDate = getText(item, 'pubDate') || '未知时间';
+        const category = getText(item, 'category');
+        const link = getText(item, 'link');
+
+        const article = document.createElement('article');
+        article.className = 'episode';
+        article.innerHTML = `
+          <h2>${title}</h2>
+          <div class="meta">
+            <span>${pubDate}</span>
+            ${category ? `<span>· ${category}</span>` : ''}
+          </div>
+          <div class="actions">
+            <button class="primary" type="button">🔊 朗读摘要</button>
+            <button class="danger" type="button">⏹ 停止</button>
+            ${link ? `<a class="btn" href="${link}" target="_blank" rel="noopener noreferrer">🔗 打开原文</a>` : ''}
+          </div>
+        `;
+
+        const [playButton, stopButton] = article.querySelectorAll('button');
+        playButton.addEventListener('click', () => speak(summary));
+        stopButton.addEventListener('click', stopSpeaking);
+
+        container.appendChild(article);
+      });
+    }
+
+    async function loadFeed() {
+      const status = document.getElementById('feed-status');
+      status.textContent = '正在加载 feed…';
+      try {
+        const response = await fetch('feed.xml', { cache: 'no-cache' });
+        if (!response.ok) {
+          throw new Error(`feed.xml 请求失败: ${response.status}`);
+        }
+
+        const xmlText = await response.text();
+        const parser = new DOMParser();
+        const xml = parser.parseFromString(xmlText, 'application/xml');
+
+        const parseError = xml.querySelector('parsererror');
+        if (parseError) {
+          throw new Error('feed.xml 解析失败');
+        }
+
+        const items = Array.from(xml.querySelectorAll('item'));
+        renderItems(items);
+        status.textContent = `已加载 ${items.length} 条`;        
+      } catch (error) {
+        console.error(error);
+        document.getElementById('episodes').innerHTML = `<div class="error">加载失败：${error.message}</div>`;
+        status.textContent = '加载失败';
+      }
+    }
+
+    loadFeed();
+  </script>
+</body>
+</html>
